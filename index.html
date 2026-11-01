@@ -1,0 +1,107 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>ShareLab – Trusted Resource Sharing</title>
+<style>
+:root{--bg:#f6f7fb;--c:#fff;--t:#1b1f2a;--m:#6b7280;--p:#4f46e5;--b:#e5e7eb;--ok:#15803d;--bad:#b91c1c;--w:#b45309;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141b;--c:#1c1f2a;--t:#eceef5;--m:#9aa1b2;--p:#8b87ff;--b:#2c3040;--ok:#4ade80;--bad:#f87171;--w:#fbbf24;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12141b;--c:#1c1f2a;--t:#eceef5;--m:#9aa1b2;--p:#8b87ff;--b:#2c3040;--ok:#4ade80;--bad:#f87171;--w:#fbbf24;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:12px 14px;background:var(--c);border-bottom:1px solid var(--b);display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+h1{font-size:18px;margin:0}main{max-width:900px;margin:0 auto;padding:12px}
+nav{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;max-width:900px;margin:0 auto}
+nav button{white-space:nowrap}
+button,select,input,textarea{font:inherit;color:var(--t);background:var(--c);border:1px solid var(--b);border-radius:8px;padding:6px 10px}
+button{cursor:pointer}button.p,nav button.on{background:var(--p);color:#fff;border-color:var(--p)}button.g{color:var(--ok)}button.r{color:var(--bad)}
+.card{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:12px;margin-bottom:10px}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}.row input,.row textarea{flex:1;min-width:120px}
+.m{color:var(--m);font-size:13px}.tag{display:inline-block;font-size:12px;border:1px solid var(--b);border-radius:20px;padding:1px 8px;margin-right:4px}
+.pending{color:var(--w)}.waitlisted{color:var(--w)}.approved,.returned{color:var(--ok)}.rejected,.cancelled{color:var(--bad)}.checked_in{color:var(--p)}
+.err{color:var(--bad);font-size:13px;margin-top:6px}.ok{color:var(--ok)}h3{margin:4px 0}.tl{border-left:2px solid var(--b);margin:8px 0 0 6px;padding-left:10px;font-size:13px}
+.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid var(--b);padding:5px;text-align:left}
+.intro{background:var(--c);border:1px dashed var(--p);border-radius:12px;padding:10px;margin-bottom:10px;font-size:13px}
+</style></head><body>
+<header><h1>🧰 ShareLab <span class="m">· fair, accountable sharing of campus equipment</span></h1>
+<label class="m">Acting as <select id="who" onchange="sw(this.value)"></select></label></header>
+<nav id="nav"></nav><main id="main"></main>
+<script>
+const K='sharelab_v1',U={priya:{n:'Priya – Student',r:'user'},ravi:{n:'Ravi – Startup founder',r:'user'},rao:{n:'Dr. Rao – Lab owner',r:'owner'},adm:{n:'Admin',r:'admin'}};
+const CO=['Good','Minor wear','Damaged'];let S,me='priya',tab='browse',q='',el=false,hist={};
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const today=()=>new Date().toISOString().slice(0,10),own=()=>U[me].r!='user';
+function seed(){return{n:1,rn:10,cn:1,res:[
+{id:1,n:'Prusa 3D Printer',loc:'Fabrication Lab, Room 12',req:'Lab Safety',dep:500,cap:4,rules:'Supervised by lab staff. No ABS filament. Clean the bed after use.',owner:'rao'},
+{id:2,n:'Mirrorless Camera Kit',loc:'Media Room 3',req:'',dep:1000,cap:6,rules:'Return with all caps, battery and card. Indoor/outdoor use only.',owner:'rao'},
+{id:3,n:'Seminar Room B',loc:'Block A, Floor 2',req:'',dep:0,cap:8,rules:'Max 30 people. Leave chairs as found.',owner:'rao'},
+{id:4,n:'Digital Oscilloscope',loc:'Electronics Lab',req:'Electronics Training',dep:800,cap:3,rules:'Probes must be returned in the case. Report any display faults.',owner:'rao'}],
+bk:[],au:[],nt:[],cr:[],certs:{priya:['Lab Safety'],ravi:[],rao:[],adm:[]}}}
+function load(){try{S=JSON.parse(localStorage.getItem(K))}catch(e){}if(!S)S=seed()}
+function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}}
+const log=(b,a,d)=>S.au.push({t:new Date().toLocaleString(),u:me,b,a,d});
+const note=(to,m)=>S.nt.push({to,m,t:new Date().toLocaleString(),r:0});
+const R=id=>S.res.find(x=>x.id==id),B=id=>S.bk.find(x=>x.id==id);
+const live=b=>['approved','checked_in'].includes(b.st),ov=(a,b)=>a.rid==b.rid&&a.d==b.d&&a.s<b.s+b.h&&b.s<a.s+a.h;
+const used=(u,rid,days,ref)=>S.bk.filter(b=>b.u==u&&(!rid||b.rid==rid)&&!['rejected','cancelled'].includes(b.st)&&Math.abs((new Date(b.d)-new Date(ref))/864e5)<days).reduce((a,b)=>a+b.h,0);
+const mgr=b=>me=='adm'||R(b.rid).owner==me,tm=b=>`${b.d} ${b.s}:00–${b.s+b.h}:00`;
+function sw(v){me=v;if(!own()&&['desk','add'].includes(tab))tab='browse';render()}
+function go(t){tab=t;render()}
+function request(rid){const r=R(rid),d=$('#d'+rid).value,s=+$('#s'+rid).value,h=+$('#h'+rid).value,p=$('#p'+rid).value.trim(),m=$('#m'+rid);
+if(!d||d<today())return m.textContent='Choose today or a future date.';if(!p)return m.textContent='Please state your purpose – owners need to know why.';
+if(s+h>17)return m.textContent='This resource closes at 17:00. Shorten the booking or start earlier.';
+if(r.req&&!S.certs[me].includes(r.req))return m.textContent='Blocked: you need "'+r.req+'" first. Submit your proof above.';
+const u=used(me,rid,7,d);if(u+h>r.cap)return m.textContent=`Fair-use limit: max ${r.cap}h per rolling 7 days on this resource. You already hold ${u}h.`;
+const b={id:S.bn=S.rn++,rid,u:me,d,s,h,p,st:'pending',why:'Eligibility verified automatically. Waiting for owner review.',inc:[]};
+if(S.bk.some(x=>live(x)&&ov(x,b))){b.st='waitlisted';b.why='That slot is already approved for someone else. You are on the waiting list, ranked by fewest hours used in the last 30 days.'}
+S.bk.push(b);log(b.id,'Request submitted',`${r.n}, ${tm(b)}, status: ${b.st}`);note(r.owner,`New request for ${r.n} (${tm(b)}) from ${U[me].n}`);tab='my';save();render()}
+function proof(c){S.cr.push({id:S.cn++,u:me,c,st:'pending'});log(0,'Training proof submitted',c+' by '+U[me].n);note('rao','Training proof from '+U[me].n+': '+c);save();render()}
+function cert(id,ok){const c=S.cr.find(x=>x.id==id);c.st=ok?'verified':'declined';if(ok)S.certs[c.u].push(c.c);log(0,ok?'Training verified':'Training declined',c.c+' for '+U[c.u].n);note(c.u,`Your "${c.c}" proof was ${ok?'verified. You can now request this resource.':'declined. Please resubmit valid proof.'}`);save();render()}
+function free(rid){S.bk.filter(b=>b.rid==rid&&b.st=='waitlisted').forEach(b=>{if(!S.bk.some(x=>live(x)&&ov(x,b))){b.st='pending';b.why='A slot opened up. Waiting for owner review.';note(b.u,'Your waitlisted booking for '+R(rid).n+' is now under review.')}})}
+function act(id,t,i){const b=B(id),r=R(b.rid),v=x=>($('#'+x+id)||{}).value||'';
+if(t=='cancel'){b.st='cancelled';b.why='Cancelled by '+U[me].n;log(id,'Cancelled',r.n);note(me==b.u?r.owner:b.u,`Booking for ${r.n} (${tm(b)}) was cancelled.`);free(b.rid)}
+if(t=='approve'){if(S.bk.some(x=>x!==b&&live(x)&&ov(x,b)))return alert('Conflict: another approved booking overlaps. Waitlist or reject this one.');
+b.st='approved';b.why=v('r')||'Meets all requirements. Approved by '+U[me].n+'.';log(id,'Approved',b.why);note(b.u,`Approved: ${r.n}, ${tm(b)}. Deposit ₹${r.dep}.`);
+S.bk.filter(x=>x!==b&&x.st=='pending'&&ov(x,b)).forEach(x=>{x.st='waitlisted';x.why='Another request for this slot was approved first. You are on the waiting list.';note(x.u,'Your request for '+r.n+' was waitlisted (slot taken).');log(x.id,'Auto-waitlisted','Overlap with booking #'+id)})}
+if(t=='reject'){b.st='rejected';b.why=v('r')||'Rejected by '+U[me].n+' (no reason given).';log(id,'Rejected',b.why);note(b.u,`Rejected: ${r.n}. Reason: ${b.why}`);free(b.rid)}
+if(t=='in'){b.st='checked_in';b.ci=v('c');b.cin=v('n');b.tin=new Date().toLocaleString();log(id,'Checked in','Condition: '+b.ci+'. '+b.cin);note(r.owner,`${U[b.u].n} checked in ${r.n} (${b.ci}).`)}
+if(t=='out'){b.st='returned';b.co=v('c');b.cout=v('n');b.tout=new Date().toLocaleString();log(id,'Returned','Condition: '+b.co+'. '+b.cout);
+if(CO.indexOf(b.co)>CO.indexOf(b.ci)){b.inc.push({by:'System (rule check)',txt:`Condition worsened from "${b.ci}" to "${b.co}". Needs owner review.`,st:'open'});log(id,'Auto-flagged','Condition worsened');note(r.owner,'Review needed: condition worsened on '+r.n)}
+note(r.owner,`${r.n} returned by ${U[b.u].n}.`);free(b.rid)}
+if(t=='late'){b.late=1;log(id,'Overdue flagged',r.n);note(b.u,`Overdue: please return ${r.n} immediately.`)}
+if(t=='inc'){const x=v('i').trim();if(!x)return;b.inc.push({by:U[me].n,txt:x,st:'open'});log(id,'Incident reported',x);note(me==b.u?r.owner:b.u,'Incident reported on '+r.n)}
+if(t=='res'){const x=b.inc[i];x.st='resolved';x.res=v('x')||'Resolved by '+U[me].n;log(id,'Incident resolved',x.res);note(b.u,'Incident on '+r.n+' resolved: '+x.res)}
+save();render()}
+function bcard(b){const r=R(b.rid),m=mgr(b),mine=b.u==me;let a='';
+if(m&&['pending','waitlisted'].includes(b.st)){const rk=S.bk.filter(x=>x.rid==b.rid&&['pending','waitlisted'].includes(x.st)).sort((x,y)=>used(x.u,0,30,x.d)-used(y.u,0,30,y.d)||x.id-y.id).findIndex(x=>x.id==b.id)+1;
+a+=`<div class="m">Fairness rank #${rk}: ${U[b.u].n} used ${used(b.u,0,30,b.d)}h in the last 30 days (fewer = higher priority).</div><div class="row"><input id="r${b.id}" placeholder="Reason (shown to user)"><button class="g" onclick="act(${b.id},'approve')">Approve</button><button class="r" onclick="act(${b.id},'reject')">Reject</button></div>`}
+if(mine&&b.st=='approved')a+=`<div class="row"><select id="c${b.id}">${CO.map(c=>'<option>'+c+'</option>').join('')}</select><input id="n${b.id}" placeholder="Condition notes at pickup"><button class="p" onclick="act(${b.id},'in')">Check in</button></div>`;
+if(mine&&b.st=='checked_in')a+=`<div class="row"><select id="c${b.id}">${CO.map(c=>'<option>'+c+'</option>').join('')}</select><input id="n${b.id}" placeholder="Condition notes at return"><button class="p" onclick="act(${b.id},'out')">Return</button></div>`;
+if(m&&b.st=='checked_in'&&!b.late)a+=`<div class="row"><button class="r" onclick="act(${b.id},'late')">Flag overdue</button></div>`;
+if((mine||m)&&['pending','waitlisted','approved'].includes(b.st))a+=`<div class="row"><button onclick="act(${b.id},'cancel')">Cancel</button></div>`;
+if((mine||m)&&['approved','checked_in','returned'].includes(b.st))a+=`<div class="row"><input id="i${b.id}" placeholder="Report damage / delay / incident"><button onclick="act(${b.id},'inc')">Report</button></div>`;
+const inc=b.inc.map((x,i)=>`<div class="m">⚠ ${esc(x.by)}: ${esc(x.txt)} <b class="${x.st=='open'?'err':'ok'}">[${x.st}${x.res?': '+esc(x.res):''}]</b></div>`+(m&&x.st=='open'?`<div class="row"><input id="x${b.id}" placeholder="Resolution note"><button onclick="act(${b.id},'res',${i})">Resolve</button></div>`:'')).join('');
+const h=S.au.filter(x=>x.b==b.id).map(x=>`<div>${esc(x.t)} · <b>${esc(x.a)}</b> · ${esc(x.u in U?U[x.u].n:x.u)}<br><span class="m">${esc(x.d)}</span></div>`).join('');
+return`<div class="card"><h3>${esc(r.n)} <span class="tag ${b.st}">${b.st.replace('_',' ')}</span>${b.late?'<span class="tag err">OVERDUE</span>':''}</h3><div class="m">#${b.id} · ${tm(b)} · ${U[b.u].n} · Purpose: ${esc(b.p)}</div>
+<div>Why: ${esc(b.why)}</div>${b.ci?`<div class="m">Before: <b>${b.ci}</b> ${esc(b.cin)}</div>`:''}${b.co?`<div class="m">After: <b>${b.co}</b> ${esc(b.cout)}</div>`:''}${inc}${a}
+<div class="row"><button onclick="hist[${b.id}]=!hist[${b.id}];render()">${hist[b.id]?'Hide':'View'} history</button></div>${hist[b.id]?`<div class="tl">${h}</div>`:''}</div>`}
+function browse(){let l=S.res.filter(r=>(r.n+r.loc+r.req).toLowerCase().includes(q.toLowerCase())&&(!el||!r.req||S.certs[me].includes(r.req)));
+const pend=c=>S.cr.some(x=>x.u==me&&x.c==c&&x.st=='pending');
+return`<div class="intro"><b>Try the full journey:</b> 1) As Ravi, request the 3D printer → blocked (no training), submit proof. 2) Switch to Dr. Rao → verify proof, then switch back and book. 3) Rao approves; Priya requests the same slot → waitlisted automatically. 4) Check in, return as Damaged, see the auto-flag and the history.</div>
+<div class="row"><input placeholder="Search equipment, rooms, training…" value="${esc(q)}" oninput="q=this.value;render(true)"><label class="m"><input type="checkbox" ${el?'checked':''} onchange="el=this.checked;render()" style="min-width:0;flex:0"> Only what I can book</label></div>`+
+l.map(r=>{const ok=!r.req||S.certs[me].includes(r.req);return`<div class="card"><h3>${esc(r.n)}</h3><div class="m">📍 ${esc(r.loc)} · Open 09:00–17:00 · Deposit ₹${r.dep} · Limit ${r.cap}h / 7 days</div>
+<div><span class="tag">${r.req?'Requires: '+esc(r.req):'No training needed'}</span><span class="tag ${ok?'ok':'err'}">${ok?'✔ You are eligible':'✖ Not yet eligible'}</span></div><div class="m">Rules: ${esc(r.rules)}</div>
+${!ok?(pend(r.req)?'<div class="m">Your training proof is awaiting verification.</div>':`<div class="row"><button onclick="proof('${esc(r.req)}')">Submit "${esc(r.req)}" proof</button></div>`):''}
+<div class="row"><input type="date" id="d${r.id}" min="${today()}" value="${today()}"><select id="s${r.id}">${[9,10,11,12,13,14,15,16].map(x=>`<option value="${x}">${x}:00</option>`).join('')}</select><select id="h${r.id}">${[1,2,3,4].map(x=>`<option value="${x}">${x}h</option>`).join('')}</select></div>
+<div class="row"><input id="p${r.id}" placeholder="Purpose (e.g. prototype for final-year project)"><button class="p" onclick="request(${r.id})">Request booking</button></div><div class="err" id="m${r.id}"></div></div>`}).join('')||'<div class="m">No match.</div>'}
+function desk(){const bs=S.bk.filter(mgr),crs=S.cr.filter(c=>c.st=='pending');
+return`<h3>Training verification queue</h3>`+(crs.map(c=>`<div class="card">${U[c.u].n} submitted proof of <b>${esc(c.c)}</b><div class="row"><button class="g" onclick="cert(${c.id},1)">Verify</button><button class="r" onclick="cert(${c.id},0)">Decline</button></div></div>`).join('')||'<div class="m">None pending.</div>')+`<h3 style="margin-top:14px">Bookings on your resources</h3>`+(bs.slice().reverse().map(bcard).join('')||'<div class="m">No bookings yet.</div>')}
+function add(){return`<div class="card"><h3>List a resource</h3><div class="row"><input id="an" placeholder="Name"><input id="al" placeholder="Location"></div><div class="row"><input id="aq" placeholder="Required training (optional)"><input id="ad" type="number" placeholder="Deposit ₹"><input id="ac" type="number" placeholder="Max hours / 7 days"></div><div class="row"><textarea id="ar" placeholder="Usage rules"></textarea></div><div class="row"><button class="p" onclick="addR()">Publish listing</button></div><div class="err" id="am"></div></div>`}
+function addR(){const g=x=>$('#'+x).value.trim();if(!g('an')||!g('al')||!(+g('ac')>0))return $('#am').textContent='Name, location and an hours limit above 0 are required.';
+const r={id:S.rn++,n:g('an'),loc:g('al'),req:g('aq'),dep:+g('ad')||0,cap:+g('ac'),rules:g('ar')||'Treat with care.',owner:me=='adm'?'rao':me};S.res.push(r);log(0,'Resource listed',r.n);tab='browse';save();render()}
+function audit(){const l=S.au.filter(x=>own()||x.u==me||(B(x.b)||{}).u==me).slice().reverse();
+return`<div class="card wrap"><h3>Audit trail</h3><table><tr><th>Time</th><th>Who</th><th>Action</th><th>Detail</th><th>#</th></tr>${l.map(x=>`<tr><td>${esc(x.t)}</td><td>${esc(U[x.u]?U[x.u].n:x.u)}</td><td>${esc(x.a)}</td><td>${esc(x.d)}</td><td>${x.b||''}</td></tr>`).join('')}</table></div>`}
+function alerts(){S.nt.filter(n=>n.to==me).forEach(n=>n.r=1);save();const l=S.nt.filter(n=>n.to==me).reverse();return l.map(n=>`<div class="card">${esc(n.m)}<div class="m">${esc(n.t)}</div></div>`).join('')||'<div class="m">No notifications.</div>'}
+function render(keep){const un=S.nt.filter(n=>n.to==me&&!n.r).length;
+$('#who').innerHTML=Object.keys(U).map(k=>`<option value="${k}" ${k==me?'selected':''}>${U[k].n}</option>`).join('');
+const t=[['browse','Browse'],['my','My bookings'],...(own()?[['desk','Owner desk'],['add','List resource']]:[]),['audit','Audit log'],['alerts','Alerts'+(un?' ('+un+')':'')]];
+$('#nav').innerHTML=t.map(x=>`<button class="${tab==x[0]?'on':''}" onclick="go('${x[0]}')">${x[1]}</button>`).join('')+'<button onclick="if(confirm(\'Reset all demo data?\')){S=seed();save();render()}">Reset demo</button>';
+const v={browse,my:()=>S.bk.filter(b=>b.u==me).reverse().map(bcard).join('')||'<div class="m">No bookings yet. Browse and request one.</div>',desk,add,audit,alerts}[tab]();
+if(keep){const f=document.activeElement;$('#main').innerHTML=v;const i=$('#main input[placeholder^=Search]');if(i){i.focus();i.setSelectionRange(q.length,q.length)}}else $('#main').innerHTML=v}
+load();render();
+</script></body></html>
